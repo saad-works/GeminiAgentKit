@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="GeminiAgent.Tools/GeminiAgent.Tools.csproj" />
+  <Project Path="GeminiAgentKit.Client/GeminiAgentKit.Client.csproj" />
+  <Project Path="GeminiAgentKit.Types/GeminiAgentKit.Types.csproj" />
+  <Project Path="GeminiAgentKit/GeminiAgentKit.csproj" />
+</Solution>
