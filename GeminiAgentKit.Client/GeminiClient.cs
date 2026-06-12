@@ -14,9 +14,12 @@ namespace GeminiAgentKit.Client;
 
 public class GeminiClient
 {
-    private List<FunctionDeclaration> _tools = new();
+    private readonly List<FunctionDeclaration> _tools = [];
+    private readonly HttpClient _httpClient = new();
 
-    public void AddTools(List<FunctionDeclaration> tools) => _tools = tools;
+    public void AddTools(List<FunctionDeclaration> tools) => _tools.AddRange(tools);
+    public void AddTools<T>() where T : new() => _tools.AddRange(ToolScanner.Scan<T>());
+    public void AddTools(object instance) => _tools.AddRange(ToolScanner.Scan(instance));
 
     public static FunctionDeclaration CreateFunction(string name, string description, Delegate handler)
         => FunctionFactory.Create(name, description, handler);
@@ -84,12 +87,15 @@ public class GeminiClient
     private async Task<GenerateContentResponse> GenerateResponseAsync(GenerateContentRequest request, string model)
     {
         var configurations = GeminiConfigurationBuilder.Build();
-        var httpClient     = new HttpClient();
+        var url            = configurations.BaseUrl.Replace(Placeholder.MODEL, model);
 
-        configurations.BaseUrl = configurations.BaseUrl.Replace(Placeholder.MODEL, model);
-        httpClient.DefaultRequestHeaders.Add(RequestHeader.GOOGLE_API_KEY, configurations.ApiKey);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add(RequestHeader.GOOGLE_API_KEY, configurations.ApiKey);
 
-        var response = await httpClient.PostAsJsonAsync(configurations.BaseUrl, request);
+        var response = await _httpClient.SendAsync(httpRequest);
 
         response.EnsureSuccessStatusCode();
 
