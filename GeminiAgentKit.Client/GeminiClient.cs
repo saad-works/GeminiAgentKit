@@ -14,26 +14,60 @@ using System.Text.Json.Nodes;
 
 namespace GeminiAgentKit.Client;
 
+/// <summary>
+/// Client for building conversational agents backed by the Google Gemini API.
+/// Handles tool registration, schema generation, and the function-calling loop automatically.
+/// </summary>
 public class GeminiClient
 {
     private readonly List<FunctionDeclaration> _tools = [];
     private readonly GeminiConfiguration _configuration;
     private readonly HttpClient _httpClient = new();
 
+    /// <summary>
+    /// Initializes a new <see cref="GeminiClient"/> loading configuration from <c>appsettings.json</c>.
+    /// </summary>
     public GeminiClient() : this(GeminiConfigurationBuilder.Build()) { }
 
+    /// <summary>
+    /// Initializes a new <see cref="GeminiClient"/> with explicitly provided configuration.
+    /// </summary>
+    /// <param name="configuration">Gemini API configuration including the base URL and API key.</param>
     public GeminiClient(GeminiConfiguration configuration)
     {
         _configuration = configuration;
     }
 
+    /// <summary>Registers a list of pre-built tool declarations.</summary>
     public void AddTools(List<FunctionDeclaration> tools) => _tools.AddRange(tools);
+
+    /// <summary>
+    /// Scans <typeparamref name="T"/> for methods decorated with <c>[GeminiFunction]</c> and registers them as tools.
+    /// </summary>
     public void AddTools<T>() where T : new() => _tools.AddRange(ToolScanner.Scan<T>());
+
+    /// <summary>
+    /// Scans <paramref name="instance"/> for methods decorated with <c>[GeminiFunction]</c> and registers them as tools.
+    /// </summary>
     public void AddTools(object instance) => _tools.AddRange(ToolScanner.Scan(instance));
 
+    /// <summary>Creates a single tool declaration from a delegate without requiring a dedicated class.</summary>
+    /// <param name="name">Tool name sent to the model.</param>
+    /// <param name="description">Plain-English description of what the tool does.</param>
+    /// <param name="handler">Delegate that implements the tool.</param>
     public static FunctionDeclaration CreateFunction(string name, string description, Delegate handler)
         => FunctionFactory.Create(name, description, handler);
 
+    /// <summary>
+    /// Sends <paramref name="instructions"/> and runs the agent loop until the model produces a final text response.
+    /// Any tool calls the model makes are handled transparently.
+    /// </summary>
+    /// <param name="instructions">The user message to send.</param>
+    /// <param name="request">Existing conversation context to continue, or <c>null</c> to start a new conversation.</param>
+    /// <param name="model">Model identifier (see <see cref="Model"/> for constants).</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>The updated request (full conversation history) and the model's final response.</returns>
+    /// <exception cref="GeminiApiException">Thrown when the Gemini API returns a non-success status code.</exception>
     public async Task<(GenerateContentRequest, GenerateContentResponse)> GenerateContentAsync(
         string instructions,
         GenerateContentRequest? request = null,
@@ -45,6 +79,16 @@ public class GeminiClient
         return (request, response);
     }
 
+    /// <summary>
+    /// Sends <paramref name="instructions"/> and runs the agent loop, deserializing the final JSON response to <typeparamref name="T"/>.
+    /// </summary>
+    /// <typeparam name="T">The type to deserialize the model's JSON response into.</typeparam>
+    /// <param name="instructions">The user message to send.</param>
+    /// <param name="request">Existing conversation context to continue, or <c>null</c> to start a new conversation.</param>
+    /// <param name="model">Model identifier (see <see cref="Model"/> for constants).</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>The updated request (full conversation history) and the typed response.</returns>
+    /// <exception cref="GeminiApiException">Thrown when the Gemini API returns a non-success status code.</exception>
     public async Task<(GenerateContentRequest, GenerateContentResponse<T>)> GenerateContentAsync<T>(
         string instructions,
         GenerateContentRequest? request = null,
