@@ -17,7 +17,7 @@ public static class FunctionFactory
             Parameters  = GeminiSchemaBuilder.Build(parameters)
         };
 
-        declaration.SetHandler(handler, parameters);
+        declaration.SetHandler(args => handler.DynamicInvoke(args), parameters);
 
         return declaration;
     }

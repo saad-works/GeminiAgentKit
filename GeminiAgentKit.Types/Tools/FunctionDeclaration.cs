@@ -9,7 +9,7 @@ public class FunctionDeclaration
 {
     private static readonly JsonSerializerOptions _options = new() { PropertyNameCaseInsensitive = true };
 
-    private Delegate? _handler;
+    private Func<object?[], object?>? _invoker;
     private ParameterInfo[]? _params;
 
     public required string Name { get; set; }
@@ -17,14 +17,14 @@ public class FunctionDeclaration
     public JsonNode? Parameters { get; set; }
 
     [JsonIgnore]
-    public bool HasHandler => _handler is not null;
+    public bool HasHandler => _invoker is not null;
 
     public object? Invoke(JsonNode? args)
     {
-        if (_handler is null) return null;
+        if (_invoker is null) return null;
 
         if (_params is null || _params.Length == 0)
-            return _handler.DynamicInvoke();
+            return _invoker([]);
 
         var invokeArgs = _params
             .Select(p => args?[p.Name!] is JsonNode node
@@ -32,12 +32,12 @@ public class FunctionDeclaration
                 : p.HasDefaultValue ? p.DefaultValue : null)
             .ToArray();
 
-        return _handler.DynamicInvoke(invokeArgs);
+        return _invoker(invokeArgs);
     }
 
-    internal void SetHandler(Delegate handler, ParameterInfo[] parameters)
+    internal void SetHandler(Func<object?[], object?> invoker, ParameterInfo[] parameters)
     {
-        _handler = handler;
+        _invoker = invoker;
         _params  = parameters;
     }
 }
