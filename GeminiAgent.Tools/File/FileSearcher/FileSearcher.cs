@@ -1,22 +1,18 @@
-﻿using GeminiAgentKit.Client.Factories;
-using GeminiAgentKit.Types.Tools;
+using GeminiAgentKit.Types.Attributes;
 
 namespace GeminiAgent.Tools.File.FileSearcher;
 
-public class FileSearcher : IBaseTool
+public class FileSearcher
 {
-    private const string _toolName = "Search Files";
-    private const string _toolDescription = "Search all files from a root directory or filter via search pattern";
-    public static FunctionDeclaration GetTool()
-    {
-        return FunctionFactory.Create(_toolName, _toolDescription, SearchFilesAsync);
-    }
+    [GeminiFunction("Search all files from a root directory or filter via search pattern")]
     public static async Task<FileSearcherContext> SearchFilesAsync(string rootDirectory, string searchPattern = "*.*")
     {
-        var files = new List<File>();
         if (!Directory.Exists(rootDirectory))
             throw new DirectoryNotFoundException($"The directory '{rootDirectory}' does not exist.");
+
         var filePaths = Directory.GetFiles(rootDirectory, searchPattern, SearchOption.AllDirectories);
+
+        var files = new List<File>();
         foreach (var path in filePaths)
         {
             var fileInfo = new FileInfo(path);
@@ -27,12 +23,11 @@ public class FileSearcher : IBaseTool
                 LastModified = fileInfo.LastWriteTime
             });
         }
-        var allFiles = await Task.FromResult(files);
 
-        return new FileSearcherContext
+        return await Task.FromResult(new FileSearcherContext
         {
             RootDirectory = rootDirectory,
-            Files = allFiles
-        };
+            Files = files
+        });
     }
 }

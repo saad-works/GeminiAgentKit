@@ -1,35 +1,22 @@
-﻿using GeminiAgentKit.Client.Factories;
-using GeminiAgentKit.Types.Tools;
+using GeminiAgentKit.Types.Attributes;
 
 namespace GeminiAgent.Tools.File.FileReader;
 
-public class FileReader : IBaseTool
+public class FileReader
 {
-    private const string _toolName = "Read a File";
-    private const string _toolDescription = "Read the content of a file from a specified path";
-    public static FunctionDeclaration GetTool()
-    {
-        return FunctionFactory.Create(_toolName, _toolDescription, ReadFileAsync);
-    }
-
+    [GeminiFunction("Read the content of a file from a specified path")]
     public static async Task<FileReaderContext> ReadFileAsync(string fullPath)
     {
-        var fileName = global::System.IO.Path.GetFileName(fullPath);
+        var fileName = Path.GetFileName(fullPath);
 
         if (!global::System.IO.File.Exists(fullPath))
-        {
-            throw new global::System.IO.FileNotFoundException(
-                $"File '{fileName}' was not found.",
-                fullPath);
-        }
-
-        var content = await global::System.IO.File.ReadAllTextAsync(fullPath);
+            throw new FileNotFoundException($"File '{fileName}' was not found.", fullPath);
 
         return new FileReaderContext
         {
             Name = fileName,
             FullPath = fullPath,
-            FileContent = content
+            FileContent = await global::System.IO.File.ReadAllTextAsync(fullPath)
         };
     }
 }

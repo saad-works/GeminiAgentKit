@@ -6,10 +6,8 @@ using GeminiAgentKit.Utility;
 
 var geminiClient = new GeminiClient();
 
-var searchTool = FileSearcher.GetTool();
-var readTool = FileReader.GetTool();
-
-geminiClient.AddTools([readTool, searchTool]);
+geminiClient.AddTools<FileSearcher>();
+geminiClient.AddTools<FileReader>();
 
 var (request, response) = await geminiClient.GenerateContentAsync("read all the files in the this directory", model: Model.Gemma431B);
 
@@ -27,8 +25,8 @@ while (true)
     var loader = Loader.Invoke(task);
 
     (request, response) = await task;
-    
+
     await loader;
-    
+
     Console.WriteLine($"\nModel: {response.Text}");
 }
