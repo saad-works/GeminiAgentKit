@@ -1,4 +1,5 @@
 using GeminiAgentKit.Client.Builders;
+using GeminiAgentKit.Client.Exceptions;
 using GeminiAgentKit.Client.Factories;
 using GeminiAgentKit.Types.Config;
 using GeminiAgentKit.Types.Constants;
@@ -111,10 +112,18 @@ public class GeminiClient
         };
         httpRequest.Headers.Add(RequestHeader.GOOGLE_API_KEY, _configuration.ApiKey);
 
-        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        if (!httpResponse.IsSuccessStatusCode)
+        {
+            var envelope = await httpResponse.Content
+                .ReadFromJsonAsync<GeminiErrorEnvelope>(cancellationToken: cancellationToken);
+            throw new GeminiApiException(
+                (int)httpResponse.StatusCode,
+                envelope?.Error?.Message ?? $"Gemini API returned {(int)httpResponse.StatusCode}",
+                envelope?.Error?.Status);
+        }
 
-        return (await response.Content.ReadFromJsonAsync<GenerateContentResponse>(cancellationToken: cancellationToken))!;
+        return (await httpResponse.Content.ReadFromJsonAsync<GenerateContentResponse>(cancellationToken: cancellationToken))!;
     }
 }
