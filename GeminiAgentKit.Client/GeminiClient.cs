@@ -36,26 +36,31 @@ public class GeminiClient
     public async Task<(GenerateContentRequest, GenerateContentResponse)> GenerateContentAsync(
         string instructions,
         GenerateContentRequest? request = null,
-        string model = Model.Gemini35Flash)
+        string model = Model.Gemini35Flash,
+        CancellationToken cancellationToken = default)
     {
         request = RequestBuilder.Build(instructions, _tools, request);
-        var response = await RunAgentLoopAsync(request, model);
+        var response = await RunAgentLoopAsync(request, model, cancellationToken);
         return (request, response);
     }
 
     public async Task<(GenerateContentRequest, GenerateContentResponse<T>)> GenerateContentAsync<T>(
         string instructions,
         GenerateContentRequest? request = null,
-        string model = Model.Gemini35Flash)
+        string model = Model.Gemini35Flash,
+        CancellationToken cancellationToken = default)
     {
         request = RequestBuilder.Build<T>(instructions, _tools, request);
-        var response = await RunAgentLoopAsync(request, model);
+        var response = await RunAgentLoopAsync(request, model, cancellationToken);
         return (request, response.ToTyped<T>());
     }
 
-    private async Task<GenerateContentResponse> RunAgentLoopAsync(GenerateContentRequest request, string model)
+    private async Task<GenerateContentResponse> RunAgentLoopAsync(
+        GenerateContentRequest request,
+        string model,
+        CancellationToken cancellationToken)
     {
-        var response = await GenerateResponseAsync(request, model);
+        var response = await GenerateResponseAsync(request, model, cancellationToken);
 
         while (response.FunctionCall is { } call)
         {
@@ -78,7 +83,7 @@ public class GeminiClient
                 }]
             });
 
-            response = await GenerateResponseAsync(request, model);
+            response = await GenerateResponseAsync(request, model, cancellationToken);
         }
 
         request.Contents.Add(response.Candidates.First().Content!);
@@ -93,7 +98,10 @@ public class GeminiClient
         return resultProperty?.GetValue(task);
     }
 
-    private async Task<GenerateContentResponse> GenerateResponseAsync(GenerateContentRequest request, string model)
+    private async Task<GenerateContentResponse> GenerateResponseAsync(
+        GenerateContentRequest request,
+        string model,
+        CancellationToken cancellationToken)
     {
         var url = _configuration.BaseUrl.Replace(Placeholder.MODEL, model);
 
@@ -103,10 +111,10 @@ public class GeminiClient
         };
         httpRequest.Headers.Add(RequestHeader.GOOGLE_API_KEY, _configuration.ApiKey);
 
-        var response = await _httpClient.SendAsync(httpRequest);
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
 
         response.EnsureSuccessStatusCode();
 
-        return (await response.Content.ReadFromJsonAsync<GenerateContentResponse>())!;
+        return (await response.Content.ReadFromJsonAsync<GenerateContentResponse>(cancellationToken: cancellationToken))!;
     }
 }
