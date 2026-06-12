@@ -4,6 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>GeminiAgentKit.Tools</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Saad</Authors>
+    <Description>Built-in tools for GeminiAgentKit — file search, file read, and a base for building your own tools.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

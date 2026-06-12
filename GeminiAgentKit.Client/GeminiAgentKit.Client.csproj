@@ -4,6 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>GeminiAgentKit.Client</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Saad</Authors>
+    <Description>C# client for building agentic applications on Google's Gemini API. Handles tool registration, schema generation, and the function-calling loop automatically.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

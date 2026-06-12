@@ -4,6 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>GeminiAgentKit.Types</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Saad</Authors>
+    <Description>Core types for GeminiAgentKit — requests, responses, tool definitions, and configuration.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
