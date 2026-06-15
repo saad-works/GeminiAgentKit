@@ -1,6 +1,7 @@
 using GeminiAgentKit.Client.Builders;
 using GeminiAgentKit.Client.Exceptions;
 using GeminiAgentKit.Client.Factories;
+using GeminiAgentKit.Types.Chat;
 using GeminiAgentKit.Types.Config;
 using GeminiAgentKit.Types.Constants;
 using GeminiAgentKit.Types.Contents;
@@ -23,11 +24,12 @@ public class GeminiClient
     private readonly List<FunctionDeclaration> _tools = [];
     private readonly GeminiConfiguration _configuration;
     private readonly HttpClient _httpClient = new();
-
     /// <summary>
     /// Initializes a new <see cref="GeminiClient"/> loading configuration from <c>appsettings.json</c>.
     /// </summary>
-    public GeminiClient() : this(GeminiConfigurationBuilder.Build()) { }
+    public GeminiClient() : this(GeminiConfigurationBuilder.Build())
+    {
+    }
 
     /// <summary>
     /// Initializes a new <see cref="GeminiClient"/> with explicitly provided configuration.
@@ -63,20 +65,22 @@ public class GeminiClient
     /// Any tool calls the model makes are handled transparently.
     /// </summary>
     /// <param name="instructions">The user message to send.</param>
-    /// <param name="request">Existing conversation context to continue, or <c>null</c> to start a new conversation.</param>
-    /// <param name="model">Model identifier (see <see cref="Model"/> for constants).</param>
+    /// <param name="history">Conversation history to continue, or <c>null</c> to start a new conversation.</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns>The updated request (full conversation history) and the model's final response.</returns>
+    /// <returns>The model's final text response.</returns>
     /// <exception cref="GeminiApiException">Thrown when the Gemini API returns a non-success status code.</exception>
-    public async Task<(GenerateContentRequest, GenerateContentResponse)> GenerateContentAsync(
+    public async Task<GenerateContentResponse> GenerateContentAsync(
         string instructions,
-        GenerateContentRequest? request = null,
-        string model = Model.Gemini35Flash,
+        ChatHistory? history = null,
         CancellationToken cancellationToken = default)
     {
-        request = RequestBuilder.Build(instructions, _tools, request);
-        var response = await RunAgentLoopAsync(request, model, cancellationToken);
-        return (request, response);
+        var request = RequestBuilder.Build(instructions, _tools, history);
+        var response = await RunAgentLoopAsync(request, cancellationToken);
+
+        history?.AddUserMessage(instructions);
+        history?.AddModelMessage(response.Text ?? string.Empty);
+
+        return response;
     }
 
     /// <summary>
@@ -84,28 +88,29 @@ public class GeminiClient
     /// </summary>
     /// <typeparam name="T">The type to deserialize the model's JSON response into.</typeparam>
     /// <param name="instructions">The user message to send.</param>
-    /// <param name="request">Existing conversation context to continue, or <c>null</c> to start a new conversation.</param>
-    /// <param name="model">Model identifier (see <see cref="Model"/> for constants).</param>
+    /// <param name="history">Conversation history to continue, or <c>null</c> to start a new conversation.</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns>The updated request (full conversation history) and the typed response.</returns>
+    /// <returns>The typed response.</returns>
     /// <exception cref="GeminiApiException">Thrown when the Gemini API returns a non-success status code.</exception>
-    public async Task<(GenerateContentRequest, GenerateContentResponse<T>)> GenerateContentAsync<T>(
+    public async Task<GenerateContentResponse<T>> GenerateContentAsync<T>(
         string instructions,
-        GenerateContentRequest? request = null,
-        string model = Model.Gemini35Flash,
+        ChatHistory? history = null,
         CancellationToken cancellationToken = default)
     {
-        request = RequestBuilder.Build<T>(instructions, _tools, request);
-        var response = await RunAgentLoopAsync(request, model, cancellationToken);
-        return (request, response.ToTyped<T>());
+        var request = RequestBuilder.Build<T>(instructions, _tools, history);
+        var response = await RunAgentLoopAsync(request, cancellationToken);
+
+        history?.AddUserMessage(instructions);
+        history?.AddModelMessage(response.Text ?? string.Empty);
+
+        return response.ToTyped<T>();
     }
 
     private async Task<GenerateContentResponse> RunAgentLoopAsync(
         GenerateContentRequest request,
-        string model,
         CancellationToken cancellationToken)
     {
-        var response = await GenerateResponseAsync(request, model, cancellationToken);
+        var response = await GenerateResponseAsync(request, cancellationToken);
 
         while (response.FunctionCall is { } call)
         {
@@ -128,7 +133,7 @@ public class GeminiClient
                 }]
             });
 
-            response = await GenerateResponseAsync(request, model, cancellationToken);
+            response = await GenerateResponseAsync(request, cancellationToken);
         }
 
         request.Contents.Add(response.Candidates.First().Content!);
@@ -145,10 +150,9 @@ public class GeminiClient
 
     private async Task<GenerateContentResponse> GenerateResponseAsync(
         GenerateContentRequest request,
-        string model,
         CancellationToken cancellationToken)
     {
-        var url = _configuration.BaseUrl.Replace(Placeholder.MODEL, model);
+        var url = _configuration.BaseUrl.Replace(Placeholder.MODEL, _configuration.Model);
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
         {

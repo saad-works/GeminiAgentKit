@@ -45,7 +45,7 @@ Add your API key to `GeminiAgentKit/appsettings.json`:
 }
 ```
 
-The `{{model}}` placeholder is replaced at runtime with the model identifier you pass to `GenerateContentAsync()`.
+The `{{model}}` placeholder is replaced at runtime with the configured model identifier.
 
 ---
 
@@ -56,10 +56,7 @@ The `{{model}}` placeholder is replaced at runtime with the model identifier you
 ```csharp
 var client = new GeminiClient();
 
-var (_, response) = await client.GenerateContentAsync(
-    "Summarize the history of the Roman Empire.",
-    model: Model.Gemini25Flash
-);
+var response = await client.GenerateContentAsync("Summarize the history of the Roman Empire.");
 
 Console.WriteLine(response.Text);
 ```
@@ -73,9 +70,8 @@ public record WeatherReport(string City, double TemperatureC, string Conditions)
 
 var client = new GeminiClient();
 
-var (_, response) = await client.GenerateContentAsync<WeatherReport>(
-    "Return a JSON weather report for London right now.",
-    model: Model.Gemini25Flash
+var response = await client.GenerateContentAsync<WeatherReport>(
+    "Return a JSON weather report for London right now."
 );
 
 WeatherReport report = response.Result;
@@ -103,14 +99,10 @@ Register them before calling `GenerateContentAsync`:
 var client = new GeminiClient();
 client.AddTools<MyTools>();                 // scan a type (static methods)
 
-// or scan an instance (for instance methods):
-var tools = new MyTools();
-client.AddTools(tools);
+// or scan an instance (for instance methods or constructor-injected dependencies):
+client.AddTools(new MyTools());
 
-var (_, response) = await client.GenerateContentAsync(
-    "What time is it, and what is 17 + 25?",
-    model: Model.Gemini25Flash
-);
+var response = await client.GenerateContentAsync("What time is it, and what is 17 + 25?");
 
 Console.WriteLine(response.Text);
 ```
@@ -119,27 +111,30 @@ The client runs the full agent loop internally: if the model calls a function, t
 
 ### 4. Multi-turn conversations
 
-Pass the `request` object back into subsequent calls to maintain conversation history:
+Create a `ChatHistory` and pass it to each call. The client reads prior messages from it to provide context, and appends the new user message and model reply after each turn.
 
 ```csharp
 var client = new GeminiClient();
 client.AddTools<FileSearcher>();
 client.AddTools<FileReader>();
 
-var (request, response) = await client.GenerateContentAsync(
+var history = new ChatHistory();
+
+var response = await client.GenerateContentAsync(
     "List all .cs files in C:/MyProject",
-    model: Model.Gemini25Flash
+    history
 );
 Console.WriteLine(response.Text);
 
-// continue the same conversation
-(request, response) = await client.GenerateContentAsync(
+// Continue the same conversation — history carries the context automatically
+response = await client.GenerateContentAsync(
     "Now read the contents of Program.cs",
-    request,
-    model: Model.Gemini25Flash
+    history
 );
 Console.WriteLine(response.Text);
 ```
+
+Omit `history` (or pass `null`) for stateless single-turn calls.
 
 ### 5. Dynamic tools with `FunctionFactory`
 
@@ -155,10 +150,55 @@ var greet = GeminiClient.CreateFunction(
 var client = new GeminiClient();
 client.AddTools([greet]);
 
-var (_, response) = await client.GenerateContentAsync(
-    "Greet Alice.",
-    model: Model.Gemini25Flash
-);
+var response = await client.GenerateContentAsync("Greet Alice.");
+```
+
+---
+
+## Chat Management
+
+`ChatHistory` is the primary mechanism for maintaining context across multiple turns. It is a simple, caller-owned object that stores an ordered list of `Message` entries.
+
+```csharp
+public class ChatHistory
+{
+    public List<Message> Messages { get; set; }
+
+    public void AddUserMessage(string content);
+    public void AddModelMessage(string content);
+}
+```
+
+**How it works:**
+
+1. Before each API call, `RequestBuilder` replays all messages in `history.Messages` into the request's `Contents` list, restoring the full conversation context.
+2. After the agent loop completes and the model returns a final text reply, `GeminiClient` appends the user's message and the model's reply to `history` automatically.
+
+**Key properties:**
+
+- **Caller-owned** — you hold the `ChatHistory` reference. The client reads from and writes to it, but never stores it internally.
+- **Stateless client** — a single `GeminiClient` instance can serve multiple independent conversations by using separate `ChatHistory` objects.
+- **Transparent to tool calls** — intermediate function calls made during the agent loop are not written to `ChatHistory`. Only the final user message and model text reply are recorded.
+
+**Branching conversations:**
+
+Because `ChatHistory` is a plain object, you can fork conversations by cloning the message list:
+
+```csharp
+var fork = new ChatHistory
+{
+    Messages = new List<Message>(history.Messages)
+};
+
+// Continue independently from the same point
+var branchA = await client.GenerateContentAsync("Take this in direction A", fork);
+```
+
+**Inspecting history:**
+
+```csharp
+foreach (var message in history.Messages)
+    Console.WriteLine($"{message.Role}: {message.Text}");
 ```
 
 ---
@@ -257,11 +297,9 @@ Constants are in `GeminiAgentKit.Types.System.Model`:
 |---|---|
 | `Model.Gemini25Pro` | `gemini-2.5-pro` |
 | `Model.Gemini25Flash` | `gemini-2.5-flash` |
-| `Model.Gemini35Flash` | `gemini-1.5-flash` |
-| `Model.Gemini31FlashLite` | `gemini-1.5-flash-lite` |
-| `Model.Gemma431B` | `gemma-4-31b-it` |
-
-Pass the constant (or any valid model string) as the `model` argument to `GenerateContentAsync`.
+| `Model.Gemini35Flash` | `gemini-3.5-flash` |
+| `Model.Gemini31FlashLite` | `gemini-3.1-flash-lite` |
+| `Model.Gemma431B` | `gemma-4-31b-it` (default) |
 
 ---
 
@@ -271,6 +309,7 @@ Pass the constant (or any valid model string) as the `model` argument to `Genera
 GeminiAgentKit/
 ├── GeminiAgentKit.Types/          Core types
 │   ├── Attributes/                [GeminiFunction] attribute
+│   ├── Chat/                      ChatHistory, Message
 │   ├── Configurations/            GeminiConfiguration, GenerationConfig
 │   ├── Contents/                  Content, Part
 │   ├── Requests/                  GenerateContentRequest
@@ -281,6 +320,7 @@ GeminiAgentKit/
 │
 ├── GeminiAgentKit.Client/         Client and tool infrastructure
 │   ├── Builders/                  GeminiConfigurationBuilder, RequestBuilder
+│   ├── Exceptions/                GeminiApiException
 │   ├── Factories/                 FunctionFactory, ToolScanner
 │   ├── Utilities/                 NameSanitizer
 │   └── GeminiClient.cs            Main entry point
@@ -290,7 +330,7 @@ GeminiAgentKit/
 │       ├── FileReader/            Read file content
 │       └── FileSearcher/          Search files by pattern
 │
-└── GeminiAgentKit/                Demo console app
+└── GeminiAgentKit/                Console app
     ├── Program.cs
     ├── Utility/Loader.cs          Spinner UI
     └── appsettings.json           API key + base URL
@@ -300,13 +340,15 @@ GeminiAgentKit/
 
 ## How It Works Internally
 
-1. **Tool registration** — `ToolScanner` reflects on the target type, finds methods with `[GeminiFunction]`, and builds a `FunctionDeclaration` for each. The declaration holds the method name, description, a JSON Schema derived from the parameter types, and a delegate to invoke the method.
+1. **Tool registration** — `ToolScanner` reflects on the target type, finds methods with `[GeminiFunction]`, and builds a `FunctionDeclaration` for each. The declaration holds the method name, description, a JSON Schema derived from the parameter types, and an invoker delegate.
 
-2. **Request building** — `RequestBuilder` assembles a `GenerateContentRequest` with the conversation history, system instruction, generation config, and the list of tool declarations.
+2. **Request building** — `RequestBuilder` assembles a `GenerateContentRequest` with the system instruction and tool declarations. If a `ChatHistory` is provided, its messages are replayed into `Contents` before the new user message is appended.
 
-3. **Agent loop** — `GeminiClient` POSTs the request to the Gemini API. If the response contains a `FunctionCall`, the matching declaration is looked up by name, its handler is invoked with the deserialized arguments, and the result is appended to the conversation as a `FunctionResponse`. This repeats until the model returns a text response.
+3. **Agent loop** — `GeminiClient` POSTs the request to the Gemini API. If the response contains a `FunctionCall`, the matching declaration is looked up by name, its handler is invoked with the deserialized arguments, and the result is appended to the request as a `FunctionResponse`. This repeats until the model returns a text response.
 
-4. **Schema generation** — `GeminiSchemaBuilder` walks C# parameter and property types recursively to produce a Gemini-compatible JSON Schema object, including `required` arrays and nested object definitions.
+4. **History update** — once the agent loop produces a final text reply, `GeminiClient` appends the user's instruction and the model's response to `ChatHistory`, keeping it in sync for the next turn.
+
+5. **Schema generation** — `GeminiSchemaBuilder` walks C# parameter and property types recursively to produce a Gemini-compatible JSON Schema object, including `required` arrays and nested object definitions.
 
 ---
 
@@ -317,7 +359,6 @@ GeminiAgentKit/
 | `Microsoft.Extensions.Configuration` | Loading `appsettings.json` |
 | `Microsoft.Extensions.Configuration.Json` | JSON config provider |
 | `Microsoft.Extensions.Configuration.Binder` | Binding config to `GeminiConfiguration` |
-| `NJsonSchema` | JSON Schema support |
 
 All packages target .NET 10.
 

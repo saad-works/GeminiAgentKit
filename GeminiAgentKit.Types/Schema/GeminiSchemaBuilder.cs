@@ -4,11 +4,25 @@ using System.Text.Json.Serialization;
 
 namespace GeminiAgentKit.Types.Schema;
 
+/// <summary>
+/// Converts C# types and method parameter lists into Gemini-compatible JSON Schema objects.
+/// Used internally by <c>FunctionFactory</c> and <c>ToolScanner</c> to describe tool parameters,
+/// and by <c>RequestBuilder</c> to describe structured-output response schemas.
+/// </summary>
 public static class GeminiSchemaBuilder
 {
+    /// <summary>Builds a JSON Schema for type <typeparamref name="T"/>.</summary>
     public static JsonNode Build<T>() => BuildSchema(typeof(T));
+
+    /// <summary>Builds a JSON Schema for the given <paramref name="type"/>.</summary>
+    /// <param name="type">The C# type to convert.</param>
     public static JsonNode Build(Type type) => BuildSchema(type);
 
+    /// <summary>
+    /// Builds a JSON Schema object describing the parameters of a function.
+    /// Returns <see langword="null"/> when <paramref name="parameters"/> is empty.
+    /// </summary>
+    /// <param name="parameters">Reflected parameter metadata from a method signature.</param>
     public static JsonNode? Build(ParameterInfo[] parameters)
     {
         if (parameters.Length == 0) return null;

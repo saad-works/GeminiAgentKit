@@ -2,8 +2,19 @@ using GeminiAgentKit.Types.Attributes;
 
 namespace GeminiAgent.Tools.File.FileSearcher;
 
+/// <summary>
+/// Built-in tool that recursively searches a directory for files matching an optional pattern.
+/// Register with <c>client.AddTools&lt;FileSearcher&gt;()</c>.
+/// </summary>
 public class FileSearcher
 {
+    /// <summary>
+    /// Recursively searches <paramref name="rootDirectory"/> for files matching <paramref name="searchPattern"/>
+    /// and returns their names, paths, and last-modified timestamps.
+    /// </summary>
+    /// <param name="rootDirectory">The root directory to search.</param>
+    /// <param name="searchPattern">Glob filter pattern, e.g. <c>*.cs</c>. Defaults to <c>*.*</c> (all files).</param>
+    /// <exception cref="DirectoryNotFoundException">Thrown when <paramref name="rootDirectory"/> does not exist.</exception>
     [GeminiFunction("Search all files from a root directory or filter via search pattern")]
     public static async Task<FileSearcherContext> SearchFilesAsync(string rootDirectory, string searchPattern = "*.*")
     {

@@ -6,11 +6,25 @@ using System.Reflection;
 
 namespace GeminiAgentKit.Client.Factories;
 
+/// <summary>
+/// Reflects over a type or instance to discover methods decorated with <see cref="GeminiFunctionAttribute"/>
+/// and converts them into <see cref="FunctionDeclaration"/> entries ready for registration with <c>GeminiClient</c>.
+/// </summary>
 public static class ToolScanner
 {
+    /// <summary>
+    /// Instantiates <typeparamref name="T"/> and scans all its public methods for <see cref="GeminiFunctionAttribute"/>.
+    /// Supports both static and instance methods.
+    /// </summary>
+    /// <typeparam name="T">The tool class to scan. Must have a parameterless constructor.</typeparam>
     public static List<FunctionDeclaration> Scan<T>() where T : new()
         => Scan(typeof(T), new T());
 
+    /// <summary>
+    /// Scans all public methods on <paramref name="instance"/> for <see cref="GeminiFunctionAttribute"/>.
+    /// Use this overload when the tool class requires constructor arguments.
+    /// </summary>
+    /// <param name="instance">The tool instance to scan.</param>
     public static List<FunctionDeclaration> Scan(object instance)
         => Scan(instance.GetType(), instance);
 
