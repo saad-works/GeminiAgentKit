@@ -64,18 +64,20 @@ public class GeminiClient
     /// Sends <paramref name="instructions"/> and runs the agent loop until the model produces a final text response.
     /// Any tool calls the model makes are handled transparently.
     /// </summary>
+    /// <param name="model">The Gemini model to use (e.g. "gemini-2.0-flash"). If <c>null</c> or whitespace, the default model from configuration is used.</param>
     /// <param name="instructions">The user message to send.</param>
     /// <param name="history">Conversation history to continue, or <c>null</c> to start a new conversation.</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>The model's final text response.</returns>
     /// <exception cref="GeminiApiException">Thrown when the Gemini API returns a non-success status code.</exception>
     public async Task<GenerateContentResponse> GenerateContentAsync(
+        string model,
         string instructions,
         ChatHistory? history = null,
         CancellationToken cancellationToken = default)
     {
         var request = RequestBuilder.Build(instructions, _tools, history);
-        var response = await RunAgentLoopAsync(request, cancellationToken);
+        var response = await RunAgentLoopAsync(model, request, cancellationToken);
 
         history?.AddUserMessage(instructions);
         history?.AddModelMessage(response.Text ?? string.Empty);
@@ -87,18 +89,20 @@ public class GeminiClient
     /// Sends <paramref name="instructions"/> and runs the agent loop, deserializing the final JSON response to <typeparamref name="T"/>.
     /// </summary>
     /// <typeparam name="T">The type to deserialize the model's JSON response into.</typeparam>
+    /// <param name="model">The Gemini model to use (e.g. "gemini-2.0-flash"). If <c>null</c> or whitespace, the default model from configuration is used.</param>
     /// <param name="instructions">The user message to send.</param>
     /// <param name="history">Conversation history to continue, or <c>null</c> to start a new conversation.</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>The typed response.</returns>
     /// <exception cref="GeminiApiException">Thrown when the Gemini API returns a non-success status code.</exception>
     public async Task<GenerateContentResponse<T>> GenerateContentAsync<T>(
+        string model,
         string instructions,
         ChatHistory? history = null,
         CancellationToken cancellationToken = default)
     {
         var request = RequestBuilder.Build<T>(instructions, _tools, history);
-        var response = await RunAgentLoopAsync(request, cancellationToken);
+        var response = await RunAgentLoopAsync(model, request, cancellationToken);
 
         history?.AddUserMessage(instructions);
         history?.AddModelMessage(response.Text ?? string.Empty);
@@ -107,10 +111,11 @@ public class GeminiClient
     }
 
     private async Task<GenerateContentResponse> RunAgentLoopAsync(
+        string model,
         GenerateContentRequest request,
         CancellationToken cancellationToken)
     {
-        var response = await GenerateResponseAsync(request, cancellationToken);
+        var response = await GenerateResponseAsync(model, request, cancellationToken);
 
         while (response.FunctionCall is { } call)
         {
@@ -133,7 +138,7 @@ public class GeminiClient
                 }]
             });
 
-            response = await GenerateResponseAsync(request, cancellationToken);
+            response = await GenerateResponseAsync(model, request, cancellationToken);
         }
 
         request.Contents.Add(response.Candidates.First().Content!);
@@ -149,10 +154,13 @@ public class GeminiClient
     }
 
     private async Task<GenerateContentResponse> GenerateResponseAsync(
+        string model,
         GenerateContentRequest request,
         CancellationToken cancellationToken)
     {
-        var url = _configuration.BaseUrl.Replace(Placeholder.MODEL, _configuration.Model);
+        model = string.IsNullOrWhiteSpace(model) ? _configuration.Model : model;
+
+        var url = _configuration.BaseUrl.Replace(Placeholder.MODEL, model);
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
         {
