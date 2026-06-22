@@ -56,7 +56,7 @@ The `{{model}}` placeholder is replaced at runtime with the configured model ide
 ```csharp
 var client = new GeminiClient();
 
-var response = await client.GenerateContentAsync("Summarize the history of the Roman Empire.");
+var response = await client.GenerateContentAsync(Model.Gemini25Flash, "Summarize the history of the Roman Empire.");
 
 Console.WriteLine(response.Text);
 ```
@@ -71,6 +71,7 @@ public record WeatherReport(string City, double TemperatureC, string Conditions)
 var client = new GeminiClient();
 
 var response = await client.GenerateContentAsync<WeatherReport>(
+    Model.Gemini25Flash,
     "Return a JSON weather report for London right now."
 );
 
@@ -102,7 +103,7 @@ client.AddTools<MyTools>();                 // scan a type (static methods)
 // or scan an instance (for instance methods or constructor-injected dependencies):
 client.AddTools(new MyTools());
 
-var response = await client.GenerateContentAsync("What time is it, and what is 17 + 25?");
+var response = await client.GenerateContentAsync(Model.Gemini25Flash, "What time is it, and what is 17 + 25?");
 
 Console.WriteLine(response.Text);
 ```
@@ -121,6 +122,7 @@ client.AddTools<FileReader>();
 var history = new ChatHistory();
 
 var response = await client.GenerateContentAsync(
+    Model.Gemini25Flash,
     "List all .cs files in C:/MyProject",
     history
 );
@@ -128,6 +130,7 @@ Console.WriteLine(response.Text);
 
 // Continue the same conversation — history carries the context automatically
 response = await client.GenerateContentAsync(
+    Model.Gemini25Flash,
     "Now read the contents of Program.cs",
     history
 );
@@ -150,7 +153,7 @@ var greet = GeminiClient.CreateFunction(
 var client = new GeminiClient();
 client.AddTools([greet]);
 
-var response = await client.GenerateContentAsync("Greet Alice.");
+var response = await client.GenerateContentAsync(Model.Gemini25Flash, "Greet Alice.");
 ```
 
 ---
