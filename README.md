@@ -29,6 +29,8 @@ public class MyTools
 
 That is the whole program. The model decides to call `GetCurrentTime` and `Add`, the kit runs them, returns the results to the model, and you get the final answer.
 
+**See it do real work:** [`samples/CodeReviewAgent`](./samples/CodeReviewAgent) is an AI code reviewer for your git diff, about 120 lines built on this kit.
+
 ## Why GeminiAgentKit
 
 - **Tiny surface area.** One client class, one attribute. No DI container, no config file required.
@@ -293,6 +295,7 @@ GeminiAgentKit/
 ├── GeminiAgentKit.Client/    GeminiClient, tool scanning, request building, exceptions
 ├── GeminiAgent.Tools/        Built-in tools (published as GeminiAgentKit.Tools)
 ├── GeminiAgentKit.Tests/     Unit tests (no network; uses a fake HTTP handler)
+├── samples/CodeReviewAgent/  AI code reviewer for git diffs
 └── GeminiAgentKit/           Demo console app
 ```
 

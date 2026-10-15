@@ -4,4 +4,5 @@
   <Project Path="GeminiAgentKit.Types/GeminiAgentKit.Types.csproj" />
   <Project Path="GeminiAgentKit/GeminiAgentKit.csproj" />
   <Project Path="GeminiAgentKit.Tests/GeminiAgentKit.Tests.csproj" />
+  <Project Path="samples/CodeReviewAgent/CodeReviewAgent.csproj" />
 </Solution>
