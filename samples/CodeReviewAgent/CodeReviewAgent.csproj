@@ -10,7 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\GeminiAgent.Tools\GeminiAgent.Tools.csproj" />
     <ProjectReference Include="..\..\GeminiAgentKit.Client\GeminiAgentKit.Client.csproj" />
     <ProjectReference Include="..\..\GeminiAgentKit.Types\GeminiAgentKit.Types.csproj" />
   </ItemGroup>

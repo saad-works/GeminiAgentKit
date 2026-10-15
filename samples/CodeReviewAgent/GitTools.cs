@@ -5,29 +5,57 @@ using GeminiAgentKit.Types.Attributes;
 namespace CodeReviewAgent;
 
 /// <summary>Read-only git tools the review agent can call. No shell is involved and refs are validated.</summary>
-public partial class GitTools(string repoPath)
+public partial class GitTools(string repoPath, int maxChars = 12_000)
 {
-    private const int MaxOutputChars = 60_000;
+    // Files that are large, generated or not worth reviewing; excluded from the changed-file list and from diffs.
+    private static readonly string[] ExcludedPaths =
+    [
+        "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "*.lock", "*.min.js", "*.min.css", "*.map",
+        "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.pdf", "*.vsix", "*.nupkg", "*.dll", "*.exe",
+        "dist/**", "bin/**", "obj/**", "node_modules/**"
+    ];
 
-    [GeminiFunction("List the files changed in the working tree. Pass baseRef (e.g. 'main') to compare against a branch, or staged=true for staged changes only.")]
+    [GeminiFunction("List the files changed in the working tree (generated, binary and lock files are left out). Pass baseRef (e.g. 'main') to compare against a branch, or staged=true for staged changes only.")]
     public Task<string> GetChangedFilesAsync(string? baseRef = null, bool staged = false)
-        => RunGitAsync(BuildDiffArgs(["--name-status"], baseRef, staged));
+    {
+        var args = BuildDiffArgs(["--name-status"], baseRef, staged);
+        AddPathspec(args, null);
+        return RunGitAsync(args);
+    }
 
-    [GeminiFunction("Get the unified diff of the changes. Pass baseRef (e.g. 'main') to compare against a branch, staged=true for staged changes only, and path to limit the diff to one file.")]
+    [GeminiFunction("Get the unified diff of one changed file. Pass baseRef (e.g. 'main') to compare against a branch, staged=true for staged changes only, and path for the file. Large diffs are truncated.")]
     public Task<string> GetDiffAsync(string? baseRef = null, bool staged = false, string? path = null)
     {
         var args = BuildDiffArgs(["--unified=3"], baseRef, staged);
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            args.Add("--");
-            args.Add(path);
-        }
+        AddPathspec(args, path);
         return RunGitAsync(args);
+    }
+
+    [GeminiFunction("Read the full text of a file in the repository. path is relative to the repository root.")]
+    public async Task<string> ReadFileAsync(string path)
+    {
+        var root = Path.GetFullPath(repoPath);
+        var full = Path.GetFullPath(Path.Combine(root, path));
+
+        if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException($"'{path}' is outside the repository.");
+        if (!File.Exists(full))
+            throw new FileNotFoundException($"'{path}' does not exist in the repository.");
+
+        var text = await File.ReadAllTextAsync(full);
+        return text.Length <= maxChars * 3 ? text : text[..(maxChars * 3)] + "\n... [file truncated]";
     }
 
     [GeminiFunction("Get the most recent commit messages (subject lines) to understand the intent of the change.")]
     public Task<string> GetRecentCommitsAsync(int count = 10)
         => RunGitAsync(["log", "--oneline", $"-{Math.Clamp(count, 1, 50)}"]);
+
+    private static void AddPathspec(List<string> args, string? path)
+    {
+        args.Add("--");
+        args.Add(string.IsNullOrWhiteSpace(path) ? "." : path);
+        args.AddRange(ExcludedPaths.Select(p => $":(exclude,glob)**/{p}"));
+    }
 
     private static List<string> BuildDiffArgs(IEnumerable<string> extra, string? baseRef, bool staged)
     {
@@ -66,9 +94,9 @@ public partial class GitTools(string repoPath)
             throw new InvalidOperationException($"git {string.Join(' ', args)} failed: {await stderr}");
 
         var output = await stdout;
-        return output.Length <= MaxOutputChars
+        return output.Length <= maxChars
             ? output
-            : output[..MaxOutputChars] + "\n... [truncated, ask for individual files with the path argument]";
+            : output[..maxChars] + "\n... [diff truncated; review the rest by reading the file]";
     }
 
     [GeneratedRegex(@"^[\w./~^@{}-]+$")]
