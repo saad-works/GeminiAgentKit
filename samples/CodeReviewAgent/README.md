@@ -2,6 +2,8 @@
 
 An AI code reviewer for your git changes, in about 120 lines of C#, built on GeminiAgentKit.
 
+![CodeReviewAgent demo](https://raw.githubusercontent.com/saad-works/GeminiAgentKit/master/media/review-demo.gif)
+
 The agent gets read-only git tools plus a repo-scoped `ReadFileAsync`. It lists what changed, reads the diff, opens whole files when the diff is not enough, and reports real problems with severity, location and a suggested fix.
 
 ```bash

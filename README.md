@@ -31,6 +31,8 @@ That is the whole program. The model decides to call `GetCurrentTime` and `Add`,
 
 **See it do real work:** [`samples/CodeReviewAgent`](./samples/CodeReviewAgent) is an AI code reviewer for your git diff, about 120 lines built on this kit.
 
+![CodeReviewAgent finding a SQL injection, a resource leak, an off-by-one and a divide-by-zero in a git diff](https://raw.githubusercontent.com/saad-works/GeminiAgentKit/master/media/review-demo.gif)
+
 ## Why GeminiAgentKit
 
 - **Tiny surface area.** One client class, one attribute. No DI container, no config file required.
