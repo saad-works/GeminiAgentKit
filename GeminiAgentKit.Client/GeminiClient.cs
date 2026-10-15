@@ -38,7 +38,7 @@ public class GeminiClient
     /// Initializes a new <see cref="GeminiClient"/> with an API key.
     /// </summary>
     /// <param name="apiKey">Google AI Studio API key.</param>
-    /// <param name="model">Default model used when a call does not specify one. Defaults to Gemini 2.5 Flash.</param>
+    /// <param name="model">Default model used when a call does not specify one. Defaults to Gemini 3.5 Flash.</param>
     /// <param name="httpClient">Optional <see cref="HttpClient"/> (for proxies, retries or tests). A new one is created if omitted.</param>
     public GeminiClient(string apiKey, string? model = null, HttpClient? httpClient = null)
         : this(CreateConfiguration(apiKey, model), httpClient)
@@ -57,7 +57,8 @@ public class GeminiClient
             throw new ArgumentException("A Gemini API key is required.", nameof(configuration));
 
         _configuration = configuration;
-        _httpClient = httpClient ?? new HttpClient();
+        // Thinking models can take well over HttpClient's 100s default, so allow more when we own the client.
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
     }
 
     private static string ApiKeyFromEnvironment()
@@ -222,24 +223,36 @@ public class GeminiClient
 
         var url = _configuration.BaseUrl.Replace(Placeholder.MODEL, model);
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+        for (var attempt = 0; ; attempt++)
         {
-            Content = JsonContent.Create(request)
-        };
-        httpRequest.Headers.Add(RequestHeader.GOOGLE_API_KEY, _configuration.ApiKey);
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(request)
+            };
+            httpRequest.Headers.Add(RequestHeader.GOOGLE_API_KEY, _configuration.ApiKey);
 
-        var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            using var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
 
-        if (!httpResponse.IsSuccessStatusCode)
-        {
+            if (httpResponse.IsSuccessStatusCode)
+                return (await httpResponse.Content.ReadFromJsonAsync<GenerateContentResponse>(cancellationToken: cancellationToken))!;
+
+            var statusCode = (int)httpResponse.StatusCode;
+
+            // Gemini returns 503 under load; that is worth retrying with backoff. 429 is not retried: it is usually a quota limit that a retry cannot fix and only burns more quota.
+            if (IsTransient(statusCode) && attempt < _configuration.MaxRetries)
+            {
+                await Task.Delay(_configuration.RetryBaseDelay * Math.Pow(2, attempt), cancellationToken);
+                continue;
+            }
+
             var envelope = await httpResponse.Content
                 .ReadFromJsonAsync<GeminiErrorEnvelope>(cancellationToken: cancellationToken);
             throw new GeminiApiException(
-                (int)httpResponse.StatusCode,
-                envelope?.Error?.Message ?? $"Gemini API returned {(int)httpResponse.StatusCode}",
+                statusCode,
+                envelope?.Error?.Message ?? $"Gemini API returned {statusCode}",
                 envelope?.Error?.Status);
         }
-
-        return (await httpResponse.Content.ReadFromJsonAsync<GenerateContentResponse>(cancellationToken: cancellationToken))!;
     }
+
+    private static bool IsTransient(int statusCode) => statusCode is 500 or 502 or 503 or 504;
 }

@@ -42,7 +42,7 @@ public class GeminiClientTests
 
         await client.GenerateContentAsync("Hi");
 
-        Assert.Contains($"models/{Model.Gemini25Flash}:generateContent", handler.Requests[0].RequestUri!.ToString());
+        Assert.Contains($"models/{Model.Gemini35Flash}:generateContent", handler.Requests[0].RequestUri!.ToString());
     }
 
     [Fact]
@@ -108,6 +108,57 @@ public class GeminiClientTests
         Assert.Equal(400, ex.StatusCode);
         Assert.Equal("INVALID_ARGUMENT", ex.Status);
         Assert.Contains("API key not valid", ex.Message);
+    }
+
+    private static (GeminiClient Client, FakeGeminiHandler Handler) CreateFastRetry(int maxRetries)
+    {
+        var handler = new FakeGeminiHandler();
+        var configuration = new GeminiAgentKit.Types.Config.GeminiConfiguration
+        {
+            ApiKey = "test-key",
+            MaxRetries = maxRetries,
+            RetryBaseDelay = TimeSpan.FromMilliseconds(1)
+        };
+        return (new GeminiClient(configuration, new HttpClient(handler)), handler);
+    }
+
+    private const string Overloaded = """{"error":{"code":503,"message":"high demand","status":"UNAVAILABLE"}}""";
+
+    [Fact]
+    public async Task TransientError_IsRetried_ThenSucceeds()
+    {
+        var (client, handler) = CreateFastRetry(maxRetries: 3);
+        handler.Enqueue(Overloaded, HttpStatusCode.ServiceUnavailable)
+               .Enqueue(Overloaded, HttpStatusCode.ServiceUnavailable)
+               .EnqueueText("finally");
+
+        var response = await client.GenerateContentAsync("Hi");
+
+        Assert.Equal("finally", response.Text);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task TransientError_GivesUpAfterMaxRetries()
+    {
+        var (client, handler) = CreateFastRetry(maxRetries: 2);
+        for (var i = 0; i < 3; i++) handler.Enqueue(Overloaded, HttpStatusCode.ServiceUnavailable);
+
+        var ex = await Assert.ThrowsAsync<GeminiApiException>(() => client.GenerateContentAsync("Hi"));
+
+        Assert.Equal(503, ex.StatusCode);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task ClientError_IsNotRetried()
+    {
+        var (client, handler) = CreateFastRetry(maxRetries: 3);
+        handler.Enqueue("""{"error":{"code":400,"message":"bad","status":"INVALID_ARGUMENT"}}""", HttpStatusCode.BadRequest);
+
+        await Assert.ThrowsAsync<GeminiApiException>(() => client.GenerateContentAsync("Hi"));
+
+        Assert.Single(handler.Requests);
     }
 
     [Fact]

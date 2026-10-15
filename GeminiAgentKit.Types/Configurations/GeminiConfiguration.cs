@@ -22,7 +22,16 @@ public class GeminiConfiguration
 
     /// <summary>
     /// The model used when a call passes a null or empty model.
-    /// Defaults to <see cref="GeminiModel.Gemini25Flash"/>.
+    /// Defaults to <see cref="GeminiModel.Gemini35Flash"/>.
     /// </summary>
-    public string Model { get; set; } = GeminiModel.Gemini25Flash;
+    public string Model { get; set; } = GeminiModel.Gemini35Flash;
+
+    /// <summary>
+    /// How many times to retry a request that fails with a transient error (HTTP 500, 502, 503, 504).
+    /// Set to 0 to disable retries. Defaults to 3.
+    /// </summary>
+    public int MaxRetries { get; set; } = 3;
+
+    /// <summary>Delay before the first retry; it doubles on each further retry. Defaults to 2 seconds.</summary>
+    public TimeSpan RetryBaseDelay { get; set; } = TimeSpan.FromSeconds(2);
 }

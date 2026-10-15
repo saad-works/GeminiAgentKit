@@ -16,6 +16,7 @@ dotnet run --project samples/CodeReviewAgent -- --repo /path/to/your/repo
 | `--staged` | Review only staged changes |
 | `--base main` | Review everything changed compared with a branch or ref |
 | `--repo <path>` | Repository to review (default: current directory) |
+| `--model <id>` | Gemini model to use (default: the kit default) |
 | `--dry-run` | Print the diff that would be reviewed, with no API call |
 
 ## How it uses the kit

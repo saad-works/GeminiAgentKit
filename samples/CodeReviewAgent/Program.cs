@@ -9,12 +9,14 @@ using GeminiAgentKit.Client;
 //   review --base main      review everything since branching from main
 //   review --dry-run        print the diff that would be reviewed (no API call)
 //   review --repo <path>    review a repo other than the current directory
+//   review --model <id>     Gemini model to use (default: the kit default)
 //
 // Requires the GEMINI_API_KEY environment variable (https://aistudio.google.com/apikey).
 
 var staged = args.Contains("--staged");
 var dryRun = args.Contains("--dry-run");
 var baseRef = ValueOf("--base");
+var model = ValueOf("--model") ?? "";
 var repo = Path.GetFullPath(ValueOf("--repo") ?? Directory.GetCurrentDirectory());
 
 try
@@ -60,7 +62,7 @@ async Task RunAsync()
 
 Console.Error.WriteLine($"Reviewing {scope} in {repo} ...");
 
-var response = await client.GenerateContentAsync(prompt);
+var response = await client.GenerateContentAsync(model, prompt);
 Console.WriteLine(response.Text);
 }
 

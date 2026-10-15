@@ -61,10 +61,10 @@ $env:GEMINI_API_KEY = "your-key"
 Or pass it explicitly (and optionally pick a default model):
 
 ```csharp
-var client = new GeminiClient("your-key", model: Model.Gemini25Flash);
+var client = new GeminiClient("your-key", model: Model.Gemini38Flash);
 ```
 
-`GOOGLE_API_KEY` is also accepted as the environment variable name. The default model is `gemini-2.5-flash`.
+`GOOGLE_API_KEY` is also accepted as the environment variable name. The default model is `gemini-3.5-flash`. Google retires older models for new API users regularly (2.5 Flash and Pro already are), so pass a model explicitly if you need a specific one.
 
 ---
 
@@ -268,9 +268,10 @@ Constants are in `GeminiAgentKit.Types.System.Model`. You can also pass any mode
 
 | Constant | Model ID |
 |---|---|
-| `Model.Gemini25Pro` | `gemini-2.5-pro` |
-| `Model.Gemini25Flash` | `gemini-2.5-flash` (default) |
-| `Model.Gemini35Flash` | `gemini-3.5-flash` |
+| `Model.Gemini25Pro` | `gemini-2.5-pro` (deprecated for new users) |
+| `Model.Gemini38Flash` | `gemini-3.8-flash` |
+| `Model.Gemini25Flash` | `gemini-2.5-flash` (deprecated for new users) |
+| `Model.Gemini35Flash` | `gemini-3.5-flash` (default) |
 | `Model.Gemini31FlashLite` | `gemini-3.1-flash-lite` |
 | `Model.Gemma431B` | `gemma-4-31b-it` |
 
