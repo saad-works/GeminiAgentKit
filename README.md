@@ -1,87 +1,105 @@
 # GeminiAgentKit
 
-A C# framework for building agentic applications on top of Google's Gemini API. Handles tool registration, automatic schema generation, multi-turn conversation state, and the function-calling loop — so you can focus on writing tools, not wiring the API.
+[![CI](https://github.com/saad-works/GeminiAgentKit/actions/workflows/ci.yml/badge.svg)](https://github.com/saad-works/GeminiAgentKit/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/GeminiAgentKit.Client?logo=nuget)](https://www.nuget.org/packages/GeminiAgentKit.Client)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE.txt)
+[![.NET](https://img.shields.io/badge/.NET-8%20%7C%209%20%7C%2010-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 
----
+**Gemini function calling in C# without the plumbing.** Write a normal method, add an attribute, and the agent loop (schema generation, argument parsing, tool dispatch, feeding results back to the model) is handled for you.
 
-## Objective
+```csharp
+using GeminiAgentKit.Client;
+using GeminiAgentKit.Types.Attributes;
 
-Gemini's function-calling API is powerful but verbose to use directly: you have to define JSON schemas for every tool, serialize arguments, dispatch calls, serialize responses, and loop until the model stops calling functions. GeminiAgentKit automates all of that.
+var client = new GeminiClient();          // reads GEMINI_API_KEY
+client.AddTools<MyTools>();
 
-The goal is a minimal surface area where you:
+var response = await client.GenerateContentAsync("What time is it, and what is 17 + 25?");
+Console.WriteLine(response.Text);
 
-1. Write plain C# methods decorated with `[GeminiFunction]`
-2. Register them with a `GeminiClient`
-3. Call `GenerateContentAsync()` and get back a response — with any tool calls already handled transparently
-
-The framework targets **.NET 10** and is organized as four focused projects:
-
-| Project | Role |
-|---|---|
-| `GeminiAgentKit.Types` | Core types: requests, responses, content, tool definitions |
-| `GeminiAgentKit.Client` | `GeminiClient`, tool scanning, schema generation, request building |
-| `GeminiAgent.Tools` | Built-in tools (file search, file read) |
-| `GeminiAgentKit` | Console demo app |
-
----
-
-## Prerequisites
-
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- A [Google AI Studio](https://aistudio.google.com/) API key
-
----
-
-## Configuration
-
-Add your API key to `GeminiAgentKit/appsettings.json`:
-
-```json
+public class MyTools
 {
-  "GeminiConfiguration": {
-    "BaseUrl": "https://generativelanguage.googleapis.com/v1beta/models/{{model}}:generateContent",
-    "ApiKey": "YOUR_API_KEY_HERE"
-  }
+    [GeminiFunction("Get the current UTC time as an ISO 8601 string")]
+    public static string GetCurrentTime() => DateTime.UtcNow.ToString("O");
+
+    [GeminiFunction("Add two numbers")]
+    public static double Add(double a, double b) => a + b;
 }
 ```
 
-The `{{model}}` placeholder is replaced at runtime with the configured model identifier.
+That is the whole program. The model decides to call `GetCurrentTime` and `Add`, the kit runs them, returns the results to the model, and you get the final answer.
+
+## Why GeminiAgentKit
+
+- **Tiny surface area.** One client class, one attribute. No DI container, no config file required.
+- **Zero setup.** Set `GEMINI_API_KEY`, or pass the key to the constructor.
+- **Automatic JSON Schema.** Parameter types (primitives, enums, collections, nullables, nested objects) are turned into Gemini-compatible schemas by reflection.
+- **Typed responses.** Ask for structured JSON and get a C# object back.
+- **Multi-turn chat** with a caller-owned `ChatHistory`.
+- **Async tools** (`Task<T>`) work out of the box.
+- **Multi-targets .NET 8, 9 and 10.** No preview dependencies.
+
+## Install
+
+```bash
+dotnet add package GeminiAgentKit.Client
+dotnet add package GeminiAgentKit.Tools   # optional: built-in file tools
+```
+
+Get an API key from [Google AI Studio](https://aistudio.google.com/apikey), then:
+
+```bash
+# macOS / Linux
+export GEMINI_API_KEY="your-key"
+
+# Windows (PowerShell)
+$env:GEMINI_API_KEY = "your-key"
+```
+
+Or pass it explicitly (and optionally pick a default model):
+
+```csharp
+var client = new GeminiClient("your-key", model: Model.Gemini25Flash);
+```
+
+`GOOGLE_API_KEY` is also accepted as the environment variable name. The default model is `gemini-2.5-flash`.
 
 ---
 
 ## How to Use
 
-### 1. Single-turn generation (no tools)
+### 1. Single-turn generation
 
 ```csharp
 var client = new GeminiClient();
 
-var response = await client.GenerateContentAsync(Model.Gemini25Flash, "Summarize the history of the Roman Empire.");
-
+var response = await client.GenerateContentAsync("Summarize the history of the Roman Empire.");
 Console.WriteLine(response.Text);
+```
+
+Pass a model per call when you need one:
+
+```csharp
+var response = await client.GenerateContentAsync(Model.Gemini25Pro, "Explain monads simply.");
 ```
 
 ### 2. Typed response
 
-When you want the model to return structured JSON, use the generic overload. The response is deserialized to your type automatically.
+When you want structured JSON, use the generic overload. The response is deserialized to your type automatically.
 
 ```csharp
 public record WeatherReport(string City, double TemperatureC, string Conditions);
 
-var client = new GeminiClient();
-
 var response = await client.GenerateContentAsync<WeatherReport>(
-    Model.Gemini25Flash,
-    "Return a JSON weather report for London right now."
-);
+    "Return a JSON weather report for London right now.");
 
 WeatherReport report = response.Result;
 Console.WriteLine($"{report.City}: {report.TemperatureC}°C, {report.Conditions}");
 ```
 
-### 3. Registering tools with `[GeminiFunction]`
+### 3. Tools with `[GeminiFunction]`
 
-Decorate any public method — static or instance — with `[GeminiFunction]`. The framework reflects on the signature to build the JSON schema automatically.
+Decorate any public method (static or instance) with `[GeminiFunction]`. The signature is reflected into a JSON schema automatically.
 
 ```csharp
 public class MyTools
@@ -97,49 +115,33 @@ public class MyTools
 Register them before calling `GenerateContentAsync`:
 
 ```csharp
-var client = new GeminiClient();
-client.AddTools<MyTools>();                 // scan a type (static methods)
-
-// or scan an instance (for instance methods or constructor-injected dependencies):
-client.AddTools(new MyTools());
-
-var response = await client.GenerateContentAsync(Model.Gemini25Flash, "What time is it, and what is 17 + 25?");
-
-Console.WriteLine(response.Text);
+client.AddTools<MyTools>();           // scan a type (needs a parameterless constructor)
+client.AddTools(new MyTools());       // or scan an instance (for constructor-injected dependencies)
 ```
 
-The client runs the full agent loop internally: if the model calls a function, the framework invokes it, feeds back the result, and calls the model again — repeating until the model returns a final text response.
+The client runs the full agent loop internally: if the model calls a function, the kit invokes it, feeds back the result, and calls the model again until it returns a final text response.
 
 ### 4. Multi-turn conversations
 
-Create a `ChatHistory` and pass it to each call. The client reads prior messages from it to provide context, and appends the new user message and model reply after each turn.
+Create a `ChatHistory` and pass it to each call. The client reads prior messages from it and appends the new user message and model reply after each turn.
 
 ```csharp
-var client = new GeminiClient();
 client.AddTools<FileSearcher>();
 client.AddTools<FileReader>();
 
 var history = new ChatHistory();
 
-var response = await client.GenerateContentAsync(
-    Model.Gemini25Flash,
-    "List all .cs files in C:/MyProject",
-    history
-);
+var response = await client.GenerateContentAsync("List all .cs files in C:/MyProject", history);
 Console.WriteLine(response.Text);
 
-// Continue the same conversation — history carries the context automatically
-response = await client.GenerateContentAsync(
-    Model.Gemini25Flash,
-    "Now read the contents of Program.cs",
-    history
-);
+// Same conversation: history carries the context
+response = await client.GenerateContentAsync("Now read the contents of Program.cs", history);
 Console.WriteLine(response.Text);
 ```
 
-Omit `history` (or pass `null`) for stateless single-turn calls.
+Omit `history` for stateless single-turn calls.
 
-### 5. Dynamic tools with `FunctionFactory`
+### 5. Dynamic tools with `CreateFunction`
 
 For one-off tools where you don't want a dedicated class:
 
@@ -147,100 +149,79 @@ For one-off tools where you don't want a dedicated class:
 var greet = GeminiClient.CreateFunction(
     name:        "greet_user",
     description: "Greet the user by name",
-    handler:     (string name) => $"Hello, {name}!"
-);
+    handler:     (string name) => $"Hello, {name}!");
 
-var client = new GeminiClient();
 client.AddTools([greet]);
 
-var response = await client.GenerateContentAsync(Model.Gemini25Flash, "Greet Alice.");
+var response = await client.GenerateContentAsync("Greet Alice.");
+```
+
+### 6. Error handling
+
+API failures throw `GeminiApiException` with the HTTP status code and Gemini's error status:
+
+```csharp
+try
+{
+    await client.GenerateContentAsync("Hi");
+}
+catch (GeminiApiException ex)
+{
+    Console.WriteLine($"{ex.StatusCode} {ex.Status}: {ex.Message}");
+}
+```
+
+### 7. Custom `HttpClient`
+
+Pass your own `HttpClient` for proxies, retry handlers, logging or tests:
+
+```csharp
+var client = new GeminiClient("your-key", httpClient: myHttpClient);
 ```
 
 ---
 
 ## Chat Management
 
-`ChatHistory` is the primary mechanism for maintaining context across multiple turns. It is a simple, caller-owned object that stores an ordered list of `Message` entries.
-
-```csharp
-public class ChatHistory
-{
-    public List<Message> Messages { get; set; }
-
-    public void AddUserMessage(string content);
-    public void AddModelMessage(string content);
-}
-```
+`ChatHistory` is the mechanism for maintaining context across turns. It is a simple, caller-owned object that stores an ordered list of `Message` entries.
 
 **How it works:**
 
-1. Before each API call, `RequestBuilder` replays all messages in `history.Messages` into the request's `Contents` list, restoring the full conversation context.
-2. After the agent loop completes and the model returns a final text reply, `GeminiClient` appends the user's message and the model's reply to `history` automatically.
+1. Before each API call, `RequestBuilder` replays all messages in `history.Messages` into the request, restoring the conversation context.
+2. After the agent loop returns a final text reply, `GeminiClient` appends the user's message and the model's reply to `history`.
 
 **Key properties:**
 
-- **Caller-owned** — you hold the `ChatHistory` reference. The client reads from and writes to it, but never stores it internally.
-- **Stateless client** — a single `GeminiClient` instance can serve multiple independent conversations by using separate `ChatHistory` objects.
-- **Transparent to tool calls** — intermediate function calls made during the agent loop are not written to `ChatHistory`. Only the final user message and model text reply are recorded.
+- **Caller-owned.** You hold the `ChatHistory` reference. The client reads from and writes to it, but never stores it.
+- **Stateless client.** One `GeminiClient` can serve many independent conversations with separate `ChatHistory` objects.
+- **Transparent to tool calls.** Intermediate function calls made during the agent loop are not written to `ChatHistory`. Only the final user message and model text reply are recorded.
 
-**Branching conversations:**
-
-Because `ChatHistory` is a plain object, you can fork conversations by cloning the message list:
+**Branching conversations:** because `ChatHistory` is a plain object, you can fork a conversation by cloning the message list:
 
 ```csharp
-var fork = new ChatHistory
-{
-    Messages = new List<Message>(history.Messages)
-};
+var fork = new ChatHistory { Messages = new List<Message>(history.Messages) };
 
-// Continue independently from the same point
 var branchA = await client.GenerateContentAsync("Take this in direction A", fork);
-```
-
-**Inspecting history:**
-
-```csharp
-foreach (var message in history.Messages)
-    Console.WriteLine($"{message.Role}: {message.Text}");
 ```
 
 ---
 
 ## Built-in Tools
 
-The `GeminiAgent.Tools` project ships two ready-to-use file tools.
+The `GeminiAgentKit.Tools` package ships two ready-to-use file tools.
 
-### FileSearcher
-
-```csharp
-client.AddTools<FileSearcher>();
-```
-
-Recursively lists files under a directory. The model can call it with:
-- `rootDirectory` — path to search
-- `searchPattern` — glob filter, e.g. `*.cs` (defaults to `*.*`)
-
-Returns file names, paths, and last-modified timestamps.
-
-### FileReader
-
-```csharp
-client.AddTools<FileReader>();
-```
-
-Reads the full text content of a file by path.
-
-Returns the file name, full path, and content string.
+| Tool | Registration | What it does |
+|---|---|---|
+| `FileSearcher` | `client.AddTools<FileSearcher>()` | Recursively lists files under `rootDirectory`, filtered by `searchPattern` (e.g. `*.cs`). Returns names, paths and last-modified timestamps. |
+| `FileReader` | `client.AddTools<FileReader>()` | Reads the full text of a file by path. Returns the file name, full path and content. |
 
 ---
 
-## Extensibility: Writing Your Own Tools
+## Writing Your Own Tools
 
 Any class can expose tools. The only requirement is a `[GeminiFunction]` attribute on each method you want to expose.
 
 ### Supported parameter types
-
-The schema builder handles:
 
 - Primitives: `string`, `bool`, `int`, `long`, `float`, `double`
 - Enums (serialized as strings)
@@ -248,7 +229,7 @@ The schema builder handles:
 - Nullable types: `T?`
 - Complex objects: public properties are reflected recursively
 
-### Example: web and database tools
+### Example: web tool
 
 ```csharp
 public class WebTools
@@ -256,25 +237,10 @@ public class WebTools
     private readonly HttpClient _http = new();
 
     [GeminiFunction("Fetch the HTML content of a URL")]
-    public async Task<string> FetchPageAsync(string url)
-    {
-        return await _http.GetStringAsync(url);
-    }
+    public async Task<string> FetchPageAsync(string url) => await _http.GetStringAsync(url);
 }
 
-public class DatabaseTools
-{
-    [GeminiFunction("Run a read-only SQL query and return rows as JSON")]
-    public async Task<string> QueryAsync(string sql)
-    {
-        // execute query, serialize rows
-        return JsonSerializer.Serialize(results);
-    }
-}
-
-var client = new GeminiClient();
 client.AddTools(new WebTools());
-client.AddTools(new DatabaseTools());
 ```
 
 ### Custom tool name
@@ -288,85 +254,65 @@ public List<Product> Search(string query) { ... }
 
 ### Return types
 
-Tools can return any serializable type. The framework serializes the return value to JSON and sends it back to the model as a function response. `Task<T>` and `Task` (void async) are both handled.
+Tools can return any serializable type. The return value is serialized to JSON and sent back to the model as a function response. `Task<T>` is awaited automatically.
+
+> **Safety note:** tools run with your process's permissions. Don't expose tools (file access, shell, SQL) to models you don't trust with those capabilities, and validate arguments inside your tools.
 
 ---
 
 ## Available Models
 
-Constants are in `GeminiAgentKit.Types.System.Model`:
+Constants are in `GeminiAgentKit.Types.System.Model`. You can also pass any model ID string.
 
 | Constant | Model ID |
 |---|---|
 | `Model.Gemini25Pro` | `gemini-2.5-pro` |
-| `Model.Gemini25Flash` | `gemini-2.5-flash` |
+| `Model.Gemini25Flash` | `gemini-2.5-flash` (default) |
 | `Model.Gemini35Flash` | `gemini-3.5-flash` |
 | `Model.Gemini31FlashLite` | `gemini-3.1-flash-lite` |
-| `Model.Gemma431B` | `gemma-4-31b-it` (default) |
+| `Model.Gemma431B` | `gemma-4-31b-it` |
 
 ---
+
+## Try the demo
+
+A small console chat agent with file search and read tools lives in `GeminiAgentKit/`:
+
+```bash
+git clone https://github.com/saad-works/GeminiAgentKit.git
+cd GeminiAgentKit
+export GEMINI_API_KEY="your-key"      # or $env:GEMINI_API_KEY in PowerShell
+dotnet run --project GeminiAgentKit
+```
 
 ## Project Structure
 
 ```
 GeminiAgentKit/
-├── GeminiAgentKit.Types/          Core types
-│   ├── Attributes/                [GeminiFunction] attribute
-│   ├── Chat/                      ChatHistory, Message
-│   ├── Configurations/            GeminiConfiguration, GenerationConfig
-│   ├── Contents/                  Content, Part
-│   ├── Requests/                  GenerateContentRequest
-│   ├── Responses/                 GenerateContentResponse, Candidate, UsageMetadata
-│   ├── Schema/                    GeminiSchemaBuilder (C# → JSON Schema)
-│   ├── System/                    Model, Role constants
-│   └── Tools/                     FunctionDeclaration, FunctionCall, FunctionResponse, Tool
-│
-├── GeminiAgentKit.Client/         Client and tool infrastructure
-│   ├── Builders/                  GeminiConfigurationBuilder, RequestBuilder
-│   ├── Exceptions/                GeminiApiException
-│   ├── Factories/                 FunctionFactory, ToolScanner
-│   ├── Utilities/                 NameSanitizer
-│   └── GeminiClient.cs            Main entry point
-│
-├── GeminiAgent.Tools/             Built-in tools
-│   └── File/
-│       ├── FileReader/            Read file content
-│       └── FileSearcher/          Search files by pattern
-│
-└── GeminiAgentKit/                Console app
-    ├── Program.cs
-    ├── Utility/Loader.cs          Spinner UI
-    └── appsettings.json           API key + base URL
+├── GeminiAgentKit.Types/     Core types: requests, responses, ChatHistory, schema builder, [GeminiFunction]
+├── GeminiAgentKit.Client/    GeminiClient, tool scanning, request building, exceptions
+├── GeminiAgent.Tools/        Built-in tools (published as GeminiAgentKit.Tools)
+├── GeminiAgentKit.Tests/     Unit tests (no network; uses a fake HTTP handler)
+└── GeminiAgentKit/           Demo console app
 ```
-
----
 
 ## How It Works Internally
 
-1. **Tool registration** — `ToolScanner` reflects on the target type, finds methods with `[GeminiFunction]`, and builds a `FunctionDeclaration` for each. The declaration holds the method name, description, a JSON Schema derived from the parameter types, and an invoker delegate.
+1. **Tool registration.** `ToolScanner` reflects on the target type, finds methods with `[GeminiFunction]`, and builds a `FunctionDeclaration` for each: name, description, a JSON Schema from the parameter types, and an invoker delegate.
+2. **Request building.** `RequestBuilder` assembles a `GenerateContentRequest` with the system instruction and tool declarations. If a `ChatHistory` is provided, its messages are replayed first.
+3. **Agent loop.** `GeminiClient` POSTs the request to the Gemini API. If the response contains a `FunctionCall`, the matching declaration is invoked with the deserialized arguments, and the result is appended to the request as a `FunctionResponse`. This repeats until the model returns text.
+4. **History update.** Once a final reply arrives, the user's instruction and the model's response are appended to `ChatHistory`.
+5. **Schema generation.** `GeminiSchemaBuilder` walks C# parameter and property types recursively to produce a Gemini-compatible JSON Schema, including `required` arrays and nested objects.
 
-2. **Request building** — `RequestBuilder` assembles a `GenerateContentRequest` with the system instruction and tool declarations. If a `ChatHistory` is provided, its messages are replayed into `Contents` before the new user message is appended.
+## Contributing
 
-3. **Agent loop** — `GeminiClient` POSTs the request to the Gemini API. If the response contains a `FunctionCall`, the matching declaration is looked up by name, its handler is invoked with the deserialized arguments, and the result is appended to the request as a `FunctionResponse`. This repeats until the model returns a text response.
+```bash
+dotnet build
+dotnet test
+```
 
-4. **History update** — once the agent loop produces a final text reply, `GeminiClient` appends the user's instruction and the model's response to `ChatHistory`, keeping it in sync for the next turn.
-
-5. **Schema generation** — `GeminiSchemaBuilder` walks C# parameter and property types recursively to produce a Gemini-compatible JSON Schema object, including `required` arrays and nested object definitions.
-
----
-
-## Dependencies
-
-| Package | Used for |
-|---|---|
-| `Microsoft.Extensions.Configuration` | Loading `appsettings.json` |
-| `Microsoft.Extensions.Configuration.Json` | JSON config provider |
-| `Microsoft.Extensions.Configuration.Binder` | Binding config to `GeminiConfiguration` |
-
-All packages target .NET 10.
-
----
+Issues and pull requests are welcome. Please include a test with behaviour changes.
 
 ## License
 
-MIT
+[MIT](./LICENSE.txt)

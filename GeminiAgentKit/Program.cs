@@ -2,9 +2,10 @@ using GeminiAgent.Tools.File.FileReader;
 using GeminiAgent.Tools.File.FileSearcher;
 using GeminiAgentKit.Client;
 using GeminiAgentKit.Types.Chat;
-using GeminiAgentKit.Types.System;
 using GeminiAgentKit.Utility;
 
+// Demo: a console chat agent that can search and read files on disk.
+// Set GEMINI_API_KEY first (https://aistudio.google.com/apikey), then `dotnet run --project GeminiAgentKit`.
 var geminiClient = new GeminiClient();
 
 geminiClient.AddTools<FileSearcher>();
@@ -12,9 +13,7 @@ geminiClient.AddTools<FileReader>();
 
 var chatHistory = new ChatHistory();
 
-var response = await geminiClient.GenerateContentAsync(Model.Gemma431B, "How many planets are in the solar system?", chatHistory);
-
-Console.WriteLine(response.Text);
+Console.WriteLine("Ask me anything, or about files on this machine. Press Enter on an empty line to quit.");
 
 while (true)
 {
@@ -23,10 +22,10 @@ while (true)
 
     if (string.IsNullOrWhiteSpace(query)) break;
 
-    var task = geminiClient.GenerateContentAsync(Model.Gemini31FlashLite, query, chatHistory);
+    var task = geminiClient.GenerateContentAsync(query, chatHistory);
     var loader = Loader.Invoke(task);
 
-    response = await task;
+    var response = await task;
 
     await loader;
 

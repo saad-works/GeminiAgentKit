@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>GeminiAgentKit.Types</PackageId>
@@ -9,11 +9,19 @@
     <Authors>Saad</Authors>
     <Description>Core types for GeminiAgentKit — requests, responses, tool definitions, and configuration.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/saad-works/GeminiAgentKit</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/saad-works/GeminiAgentKit</RepositoryUrl>
+    <PackageTags>gemini;google;ai;agents;function-calling;llm;dotnet</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="Contents\Part.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
