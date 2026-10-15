@@ -173,9 +173,13 @@ catch (GeminiApiException ex)
 }
 ```
 
-### 7. Custom `HttpClient`
+### 7. Retries
 
-Pass your own `HttpClient` for proxies, retry handlers, logging or tests:
+Transient server errors (HTTP 500, 502, 503, 504) are retried automatically with exponential backoff, 3 times by default. Tune this with `GeminiConfiguration.MaxRetries` and `RetryBaseDelay` (set `MaxRetries = 0` to disable). Rate-limit and quota errors (429) are not retried.
+
+### 8. Custom `HttpClient`
+
+Pass your own `HttpClient` for proxies, logging or tests:
 
 ```csharp
 var client = new GeminiClient("your-key", httpClient: myHttpClient);
