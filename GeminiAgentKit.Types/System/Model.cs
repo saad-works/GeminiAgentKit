@@ -6,10 +6,13 @@ public record Model
     /// <summary>Gemini 3.1 Flash Lite — fast, lightweight model.</summary>
     public const string Gemini31FlashLite = "gemini-3.1-flash-lite";
 
+    /// <summary>Gemini 3.8 Flash - latest flash-tier model.</summary>
+    public const string Gemini38Flash = "gemini-3.8-flash";
+
     /// <summary>Gemini 3.5 Flash — balanced speed and capability.</summary>
     public const string Gemini35Flash = "gemini-3.5-flash";
 
-    /// <summary>Gemini 2.5 Flash — latest flash-tier model.</summary>
+    /// <summary>Gemini 2.5 Flash - older flash-tier model (no longer available to new API users).</summary>
     public const string Gemini25Flash = "gemini-2.5-flash";
 
     /// <summary>Gemini 2.5 Pro — highest capability model.</summary>

@@ -23,11 +23,25 @@ public class GeminiClient
 {
     private readonly List<FunctionDeclaration> _tools = [];
     private readonly GeminiConfiguration _configuration;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient;
+
     /// <summary>
-    /// Initializes a new <see cref="GeminiClient"/> loading configuration from <c>appsettings.json</c>.
+    /// Initializes a new <see cref="GeminiClient"/> using the API key from the
+    /// <c>GEMINI_API_KEY</c> (or <c>GOOGLE_API_KEY</c>) environment variable.
     /// </summary>
-    public GeminiClient() : this(GeminiConfigurationBuilder.Build())
+    /// <exception cref="InvalidOperationException">Thrown when neither environment variable is set.</exception>
+    public GeminiClient() : this(ApiKeyFromEnvironment())
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new <see cref="GeminiClient"/> with an API key.
+    /// </summary>
+    /// <param name="apiKey">Google AI Studio API key.</param>
+    /// <param name="model">Default model used when a call does not specify one. Defaults to Gemini 3.5 Flash.</param>
+    /// <param name="httpClient">Optional <see cref="HttpClient"/> (for proxies, retries or tests). A new one is created if omitted.</param>
+    public GeminiClient(string apiKey, string? model = null, HttpClient? httpClient = null)
+        : this(CreateConfiguration(apiKey, model), httpClient)
     {
     }
 
@@ -35,9 +49,30 @@ public class GeminiClient
     /// Initializes a new <see cref="GeminiClient"/> with explicitly provided configuration.
     /// </summary>
     /// <param name="configuration">Gemini API configuration including the base URL and API key.</param>
-    public GeminiClient(GeminiConfiguration configuration)
+    /// <param name="httpClient">Optional <see cref="HttpClient"/> (for proxies, retries or tests). A new one is created if omitted.</param>
+    public GeminiClient(GeminiConfiguration configuration, HttpClient? httpClient = null)
     {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (string.IsNullOrWhiteSpace(configuration.ApiKey))
+            throw new ArgumentException("A Gemini API key is required.", nameof(configuration));
+
         _configuration = configuration;
+        // Thinking models can take well over HttpClient's 100s default, so allow more when we own the client.
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+    }
+
+    private static string ApiKeyFromEnvironment()
+        => Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+           ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY")
+           ?? throw new InvalidOperationException(
+               "No Gemini API key found. Set the GEMINI_API_KEY environment variable, or pass the key to the GeminiClient constructor. " +
+               "Get a key at https://aistudio.google.com/apikey");
+
+    private static GeminiConfiguration CreateConfiguration(string apiKey, string? model)
+    {
+        var configuration = new GeminiConfiguration { ApiKey = apiKey };
+        if (!string.IsNullOrWhiteSpace(model)) configuration.Model = model;
+        return configuration;
     }
 
     /// <summary>Registers a list of pre-built tool declarations.</summary>
@@ -59,6 +94,32 @@ public class GeminiClient
     /// <param name="handler">Delegate that implements the tool.</param>
     public static FunctionDeclaration CreateFunction(string name, string description, Delegate handler)
         => FunctionFactory.Create(name, description, handler);
+
+    /// <summary>
+    /// Sends <paramref name="instructions"/> using the client's default model and runs the agent loop
+    /// until the model produces a final text response.
+    /// </summary>
+    /// <param name="instructions">The user message to send.</param>
+    /// <param name="history">Conversation history to continue, or <c>null</c> to start a new conversation.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    public Task<GenerateContentResponse> GenerateContentAsync(
+        string instructions,
+        ChatHistory? history = null,
+        CancellationToken cancellationToken = default)
+        => GenerateContentAsync(string.Empty, instructions, history, cancellationToken);
+
+    /// <summary>
+    /// Sends <paramref name="instructions"/> using the client's default model and deserializes the JSON reply to <typeparamref name="T"/>.
+    /// </summary>
+    /// <typeparam name="T">The type to deserialize the model's JSON response into.</typeparam>
+    /// <param name="instructions">The user message to send.</param>
+    /// <param name="history">Conversation history to continue, or <c>null</c> to start a new conversation.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    public Task<GenerateContentResponse<T>> GenerateContentAsync<T>(
+        string instructions,
+        ChatHistory? history = null,
+        CancellationToken cancellationToken = default)
+        => GenerateContentAsync<T>(string.Empty, instructions, history, cancellationToken);
 
     /// <summary>
     /// Sends <paramref name="instructions"/> and runs the agent loop until the model produces a final text response.
@@ -162,24 +223,36 @@ public class GeminiClient
 
         var url = _configuration.BaseUrl.Replace(Placeholder.MODEL, model);
 
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+        for (var attempt = 0; ; attempt++)
         {
-            Content = JsonContent.Create(request)
-        };
-        httpRequest.Headers.Add(RequestHeader.GOOGLE_API_KEY, _configuration.ApiKey);
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(request)
+            };
+            httpRequest.Headers.Add(RequestHeader.GOOGLE_API_KEY, _configuration.ApiKey);
 
-        var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            using var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
 
-        if (!httpResponse.IsSuccessStatusCode)
-        {
+            if (httpResponse.IsSuccessStatusCode)
+                return (await httpResponse.Content.ReadFromJsonAsync<GenerateContentResponse>(cancellationToken: cancellationToken))!;
+
+            var statusCode = (int)httpResponse.StatusCode;
+
+            // Gemini returns 503 under load; that is worth retrying with backoff. 429 is not retried: it is usually a quota limit that a retry cannot fix and only burns more quota.
+            if (IsTransient(statusCode) && attempt < _configuration.MaxRetries)
+            {
+                await Task.Delay(_configuration.RetryBaseDelay * Math.Pow(2, attempt), cancellationToken);
+                continue;
+            }
+
             var envelope = await httpResponse.Content
                 .ReadFromJsonAsync<GeminiErrorEnvelope>(cancellationToken: cancellationToken);
             throw new GeminiApiException(
-                (int)httpResponse.StatusCode,
-                envelope?.Error?.Message ?? $"Gemini API returned {(int)httpResponse.StatusCode}",
+                statusCode,
+                envelope?.Error?.Message ?? $"Gemini API returned {statusCode}",
                 envelope?.Error?.Status);
         }
-
-        return (await httpResponse.Content.ReadFromJsonAsync<GenerateContentResponse>(cancellationToken: cancellationToken))!;
     }
+
+    private static bool IsTransient(int statusCode) => statusCode is 500 or 502 or 503 or 504;
 }
